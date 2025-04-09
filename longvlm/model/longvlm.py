@@ -27,7 +27,7 @@ class LongVLMConfig(LlamaConfig):
     model_type = "LongVLM"
 
 
-class LongVLMLlamaModel(LlamaModel):
+class LongVLMLlamaModel(LlamaModel):#The core model, mixing vision and text embeddings.
     config_class = LongVLMConfig
 
     def __init__(self, config: LlamaConfig, mm_vision_tower=None, mm_hidden_size=None):  # TODO: Remove unused params
@@ -39,7 +39,7 @@ class LongVLMLlamaModel(LlamaModel):
         if hasattr(config, "use_mm_proj"):
             self.mm_projector = nn.Linear(config.mm_hidden_size, config.hidden_size)
             
-    def initialize_vision_modules(self, pretrain_mm_mlp_adapter=None, tune_mm_mlp_adapter=False):
+    def initialize_vision_modules(self, pretrain_mm_mlp_adapter=None, tune_mm_mlp_adapter=False):#Sets up the projector and loads pretrained weights if given (eg from your delta model)..
         vision_config = self.vision_config
         num_patches = (vision_config.frame_size // vision_config.patch_size) ** 2
 
@@ -54,11 +54,11 @@ class LongVLMLlamaModel(LlamaModel):
             self.mm_projector.load_state_dict({k.split('.')[-1]: v for k, v in mm_projector_weights.items()})
 
         return dict(
-            video_token_len=num_patches,
+            video_token_len=num_patches,#rturns patch count (256 here) and vision config.
             vision_config=vision_config
         )
 
-    def forward(
+    def forward(                     #Takes text input_ids and vision features (memory_features, local_features—maybe global vs. frame-specific)
             self,
             input_ids: torch.LongTensor = None,
             attention_mask: Optional[torch.Tensor] = None,
@@ -86,7 +86,7 @@ class LongVLMLlamaModel(LlamaModel):
                     # Multimodal LLM, but the current sample is not multimodal
                     dummy_video_features = torch.zeros(video_features.shape[1], 1024, device=inputs_embeds.device,
                                                dtype=inputs_embeds.dtype)
-                    dummy_video_features = self.mm_projector(dummy_video_features)
+                    dummy_video_features = self.mm_projector(dummy_video_features)#Projects vision features via mm_projector.
                     cur_input_embeds = cur_input_embeds + (0. * dummy_video_features).sum()
                     new_input_embeds.append(cur_input_embeds)
                     cur_video_idx += 1
@@ -151,9 +151,9 @@ class LongVLMLlamaModel(LlamaModel):
         )
 
 
-class LongVLMForCausalLM(LlamaForCausalLM):
+class LongVLMForCausalLM(LlamaForCausalLM):#Wraps LongVLMLlamaModel with a language modeling head. vision-language beast built on top of LLaMA.The causal LM wrapper for generation/loss.
     config_class = LongVLMConfig
-
+#Handles text generation and loss (via CrossEntropyLoss).
     def __init__(self, config):
         super(LlamaForCausalLM, self).__init__(config)
         self.model = LongVLMLlamaModel(config)
